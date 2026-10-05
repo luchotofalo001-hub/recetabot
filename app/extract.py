@@ -598,6 +598,9 @@ def is_vegetarian(ingredients: Iterable[str], title: str, category: str) -> bool
     if ings & MEAT:
         return False
     title_f = fold(title)
+    for raw in ("higado", "molleja", "milanesa", "chorizo", "morcilla", "panceta", "bondiola", "asado", "vacio", "entrana", "pollo", "cerdo", "pescado"):
+        if raw in title_f:
+            return False
     for raw, canon in PROTEIN_TITLE:
         if canon in MEAT and fold(raw) in title_f:
             return False

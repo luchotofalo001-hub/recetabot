@@ -10,6 +10,7 @@ from app.db import fetch_feedback, fetch_recipes
 
 app = FastAPI()
 RECIPES: list[dict] = []
+SEEN: set[int] = set()
 
 
 @app.on_event("startup")
@@ -33,6 +34,12 @@ async def webhook(secret: str, request: Request) -> JSONResponse:
     if secret != os.environ.get("WEBHOOK_SECRET", "recetabot"):
         return JSONResponse({"ok": False}, status_code=403)
     update = await request.json()
+    update_id = update.get("update_id")
+    if update_id in SEEN:
+        return JSONResponse({"ok": True})
+    SEEN.add(update_id)
+    if len(SEEN) > 500:
+        SEEN.clear()
     if "message" in update:
         msg = update["message"]
         chat_id = msg["chat"]["id"]

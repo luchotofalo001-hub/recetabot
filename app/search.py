@@ -104,6 +104,15 @@ def _likes_fails(feedback: list[dict[str, Any]]) -> tuple[dict[str, int], set[st
     return likes, fails
 
 
+MEAT_WORDS = ("higado", "molleja", "milanesa", "chorizo", "morcilla", "panceta", "bondiola", "asado", "vacio", "entrana", "pollo", "cerdo", "pescado", "atun", "salmon", "langostino", "cordero")
+
+
+def looks_meat(rec: dict[str, Any]) -> bool:
+    title = fold(rec.get("title") or "")
+    ings = " ".join(fold(i) for i in (rec.get("ingredients") or []))
+    return any(w in title or w in ings for w in MEAT_WORDS) or not rec.get("vegetarian")
+
+
 def search_slot(
     recipes: list[dict[str, Any]],
     feedback: list[dict[str, Any]],
@@ -133,19 +142,21 @@ def search_slot(
             continue
         if rid in recent and not q:
             continue
-        if diet == "vegetarian" and not rec.get("vegetarian"):
+        if diet == "vegetarian" and (not rec.get("vegetarian") or looks_meat(rec)):
             continue
-        if diet == "vegan" and not rec.get("vegan"):
+        if diet == "vegan" and (not rec.get("vegan") or looks_meat(rec)):
             continue
-        if diet == "meat" and rec.get("vegetarian"):
+        if diet == "meat" and rec.get("vegetarian") and not looks_meat(rec):
             continue
         if max_minutes and (rec.get("minutes") or 999) > max_minutes:
             continue
-        if meal == "postre" and "postre" not in (rec.get("tags") or []):
+        tags = rec.get("tags") or []
+        if meal == "postre" and "postre" not in tags:
             continue
-        if meal in {"cena", "almuerzo"} and "postre" in (rec.get("tags") or []) and diet != "any":
-            # cena salada por defecto si no pidieron postre
-            if meal and "postre" not in (q or ""):
+        if meal in {"cena", "almuerzo"} and "postre" not in (q or ""):
+            if "postre" in tags or "bebida" in tags or "pan" in tags:
+                continue
+            if rec.get("category") in {"pasteleria", "postres", "helados", "panes", "bebidas"}:
                 continue
         ings = rec.get("ingredients") or []
         if exclude_set and any(fold(i) in exclude_set for i in ings):

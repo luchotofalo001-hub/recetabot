@@ -28,7 +28,9 @@ Esquema:
 }
 Reglas:
 - "rápida", "rapido", "cena express", "en un rato" => max_minutes 45.
-- Si pide N personas con dietas distintas, un slot por persona. Si no dice dietas, un solo slot any.
+- "cena para 2, una vegetariana" => dos slots: uno vegetarian y otro any. Nunca repitas el mismo slot.
+- "cena" => meal cena. No postres.
+- "con huevo y milanesa" => ingredients_have, no es una dieta. Si nombra milanesa, carne o pollo, no fuerces vegetarian.
 - "otras", "otras opciones", "ninguna" => intent more.
 - Si quiere conservar una opción y cambiar otra, intent replace, slot_index de la que hay que cambiar (0-based) y option_index de la que se queda si la nombra.
 - "voy a hacer la 1 del primero y la 3 del segundo" => picks, slot 0-based, option 1-based, action cooked.
@@ -90,6 +92,32 @@ def _fallback(text: str) -> dict[str, Any]:
     }
 
 
+def normalize(text: str, parsed: dict[str, Any]) -> dict[str, Any]:
+    t = text.lower()
+    people = 1
+    m = re.search(r"para\s+(\d)|(\d)\s+personas|dos personas", t)
+    if m:
+        people = int(m.group(1) or m.group(2) or 2)
+    meat_words = ("milanesa", "carne", "pollo", "cerdo", "pescado", "higado", "hígado", "molleja")
+    wants_veg = "vegetarian" in t and not any(w in t for w in meat_words)
+    slots = []
+    if wants_veg:
+        slots.append({"diet": "vegetarian", "label": "vegetariana"})
+    if people > len(slots):
+        slots.append({"diet": "any", "label": "la otra" if slots else "cena"})
+    while len(slots) < people and len(slots) < 4:
+        slots.append({"diet": "any", "label": f"persona {len(slots) + 1}"})
+    if "vegetarian" in t or "para 2" in t or "para dos" in t or re.search(r"\d\s+personas", t):
+        parsed["slots"] = slots[: max(people, 1)]
+    if "cena" in t or "almuerzo" in t:
+        parsed["meal"] = "cena" if "cena" in t else "almuerzo"
+    if any(w in t for w in ("rapid", "rápid")):
+        parsed["max_minutes"] = 45
+    if any(w in t for w in meat_words):
+        parsed["ingredients_have"] = list(parsed.get("ingredients_have") or []) + [w for w in meat_words if w in t]
+    return parsed
+
+
 def parse_message(text: str, state_brief: str = "") -> dict[str, Any]:
     remembered = None
     try:
@@ -97,10 +125,10 @@ def parse_message(text: str, state_brief: str = "") -> dict[str, Any]:
     except Exception:
         remembered = None
     if remembered:
-        return remembered
+        return normalize(text, remembered)
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
-        return _fallback(text)
+        return normalize(text, _fallback(text))
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
     prompt = SYSTEM + "\nContexto de opciones ya mostradas:\n" + (state_brief or "ninguno") + "\nMensaje:\n" + text
@@ -123,6 +151,6 @@ def parse_message(text: str, state_brief: str = "") -> dict[str, Any]:
             parsed["_learned"] = True
         except Exception:
             pass
-        return parsed
+        return normalize(text, parsed)
     except Exception:
-        return _fallback(text)
+        return normalize(text, _fallback(text))
