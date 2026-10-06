@@ -113,8 +113,16 @@ def normalize(text: str, parsed: dict[str, Any]) -> dict[str, Any]:
         parsed["meal"] = "cena" if "cena" in t else "almuerzo"
     if any(w in t for w in ("rapid", "rápid")):
         parsed["max_minutes"] = 45
-    if any(w in t for w in meat_words):
-        parsed["ingredients_have"] = list(parsed.get("ingredients_have") or []) + [w for w in meat_words if w in t]
+    dish = re.search(r"(?:recetas?|platos?|ideas?)\s+de\s+(.+)", t)
+    if dish:
+        q = re.split(r"\b(para|con|rapida|rápida|vegetariana|cena)\b", dish.group(1))[0].strip(" .")
+        if q:
+            parsed["query"] = q
+            parsed["slots"] = [{"diet": "vegetarian" if wants_veg else "any", "label": q}]
+            if "cena" not in t:
+                parsed["meal"] = None
+    elif not parsed.get("query") and not any(w in t for w in ("cena", "almuerzo", "heladera", "tengo")):
+        parsed["query"] = t.strip()[:80]
     return parsed
 
 

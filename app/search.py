@@ -110,6 +110,11 @@ NOT_DINNER = {"pasteleria", "postres", "helados", "panes", "bebidas", "mermelada
 NOT_PLATE = ("chipa", "pan ", "pan de", "prepizza", "salsa ", "aderezo", "dip", "picada", "snack", "galleta", "medialuna", "factura", "tostado", "sandwich de miga", "palitos", "bolitas", "focaccia", "grisines", "bizcocho")
 
 
+PLATE = ("tarta", "empanada", "pizza", "milanesa", "guiso", "sopa", "estofado", "cazuela", "pasta", "fideos", "ravioles", "noquis", "ñoquis", "lasagna", "lasana", "canelon", "risotto", "paella", "arroz", "wok", "salteado", "rellen", "pastel", "budin de", "tortilla", "revuelto", "omelette", "pollo", "carne", "pescado", "cerdo", "bondiola", "matambre", "asado", "caldo", "minestrone", "fideua", "fideuá")
+NOT_PLATE = ("chipa", "pan ", "pan de", "prepizza", "salsa ", "aderezo", "dip ", "picada", "snack", "galleta", "medialuna", "factura", "tostado", "palitos", "bolitas", "focaccia", "grisines", "bizcocho", "muffin", "cupcake", "cookie")
+STOP = {"para", "con", "una", "uno", "receta", "recetas", "cena", "rapida", "rápida", "vegetariana", "persona", "personas", "decime", "pasame", "quiero"}
+
+
 def is_dinner(rec: dict[str, Any]) -> bool:
     title = fold(rec.get("title") or "")
     tags = rec.get("tags") or []
@@ -117,9 +122,14 @@ def is_dinner(rec: dict[str, Any]) -> bool:
         return False
     if any(w in title for w in SWEET) or any(w in title for w in NOT_PLATE):
         return False
-    if title.startswith("pan ") or " chipa" in f" {title}":
-        return False
-    return True
+    return any(w in title for w in PLATE) or rec.get("category") in {"pollo", "carne", "pescados-y-mariscos", "arroces-y-pastas", "guisos-y-sopas", "vegetariano", "vegano", "tartas", "pizzas", "empanadas"}
+
+
+def _query_score(title: str, query: str) -> float:
+    words = [w for w in fold(query).split() if len(w) > 2 and w not in STOP]
+    if not words:
+        return 0
+    return sum(1 for w in words if w in title) / len(words)
 
 
 def looks_meat(rec: dict[str, Any]) -> bool:
@@ -168,16 +178,20 @@ def search_slot(
         tags = rec.get("tags") or []
         if meal == "postre" and "postre" not in tags:
             continue
-        if meal in {"cena", "almuerzo"} and not is_dinner(rec):
+        title_f = fold(rec.get("title") or "")
+        qscore = _query_score(title_f, q) if q else 0
+        if q and qscore < 0.5 and q not in title_f:
+            continue
+        if meal in {"cena", "almuerzo"} and not q and not is_dinner(rec):
             continue
         ings = rec.get("ingredients") or []
         if exclude_set and any(fold(i) in exclude_set for i in ings):
             continue
         title_f = fold(rec.get("title") or "")
-        if q and q not in title_f and not any(q in fold(i) for i in ings):
+        if q and qscore < 0.5 and q not in title_f:
             continue
-        score = 1.0
-        if have_set:
+        score = 1.0 + qscore * 8
+        if have_set and not q:
             cov = _coverage(ings, have_set)
             if cov < 0.45 and not q:
                 continue

@@ -54,25 +54,28 @@ def _brief(state: dict) -> str:
     return "\n".join(lines)
 
 
-def _buttons(state: dict) -> list[list[dict]]:
-    rows: list[list[dict]] = [[{"text": "Otras de todo", "callback_data": "more"}]]
-    slot_row = []
-    for i, slot in enumerate(state.get("slots") or []):
-        slot_row.append({"text": f"Otra {slot.get('label', i)}", "callback_data": f"slot:{i}"})
-    if slot_row:
-        rows.append(slot_row[:3])
-    for i, slot in enumerate(state.get("slots") or []):
-        for n, _opt in enumerate(slot.get("options") or []):
-            code = f"{i+1}.{n+1}"
-            rows.append(
-                [
-                    {"text": f"Ver {code}", "callback_data": f"see:{i}:{n}"},
-                    {"text": f"Hice {code}", "callback_data": f"cook:{i}:{n}"},
-                    {"text": f"Like {code}", "callback_data": f"like:{i}:{n}"},
-                    {"text": f"No {code}", "callback_data": f"fail:{i}:{n}"},
-                ]
-            )
-    return rows
+def _buttons_for(slot: int, index: int) -> list[list[dict]]:
+    return [[
+        {"text": "Ver", "callback_data": f"see:{slot}:{index}"},
+        {"text": "La hice", "callback_data": f"cook:{slot}:{index}"},
+        {"text": "Me gustó", "callback_data": f"like:{slot}:{index}"},
+        {"text": "No", "callback_data": f"fail:{slot}:{index}"},
+    ]]
+
+
+def _present(chat_id: int, state: dict) -> None:
+    slots = state.get("slots") or []
+    if not slots or not any(s.get("options") for s in slots):
+        send(chat_id, "No encontré recetas con eso. Probá el nombre del plato, por ejemplo: recetas de tarta de verdura.")
+        return
+    for i, slot in enumerate(slots):
+        send(chat_id, f"*{slot.get('label', 'Opciones')}*")
+        for n, rec in enumerate(slot.get("options") or []):
+            send(chat_id, format_option(n + 1, rec), _buttons_for(i, n))
+    extra = [[{"text": "Otras opciones", "callback_data": "more"}]]
+    if len(slots) > 1:
+        extra.append([{"text": f"Otras {s.get('label', i)}", "callback_data": f"slot:{i}"} for i, s in enumerate(slots)][:3])
+    send(chat_id, "Tocá Ver para las cantidades y el paso a paso.", extra)
 
 
 def _have(chat_id: int, parsed: dict, previous: dict | None) -> list[str]:
@@ -169,7 +172,7 @@ def _run_search(chat_id: int, recipes, feedback, parsed, previous: dict | None, 
             exclude=parsed.get("ingredients_exclude") or [],
             max_minutes=parsed.get("max_minutes") if parsed.get("max_minutes") is not None else (previous or {}).get("max_minutes"),
             meal=parsed.get("meal") or (previous or {}).get("meal"),
-            query=parsed.get("query"),
+            query=parsed.get("query") or (previous or {}).get("query"),
             avoid_ids=avoid,
             limit=3,
             allow_recent=bool(parsed.get("query")),
@@ -182,7 +185,7 @@ def _run_search(chat_id: int, recipes, feedback, parsed, previous: dict | None, 
         "seen": list(avoid)[-80:],
         "have": have,
         "max_minutes": parsed.get("max_minutes", (previous or {}).get("max_minutes")),
-        "meal": parsed.get("meal") or (previous or {}).get("meal"),
+        "query": parsed.get("query") or (previous or {}).get("query"),
     }
 
 
@@ -344,7 +347,7 @@ def handle_text(chat_id: int, text: str, recipes: list[dict], feedback: list[dic
         ]}
     new_state = _run_search(chat_id, recipes, feedback, parsed, state if intent in {"more", "replace"} else None, only if intent == "replace" else None)
     save_state(chat_id, new_state)
-    send(chat_id, _render(new_state), _buttons(new_state))
+    _present(chat_id, new_state)
 
 
 def handle_callback(chat_id: int, data: str, recipes: list[dict], feedback: list[dict]) -> None:
@@ -353,7 +356,7 @@ def handle_callback(chat_id: int, data: str, recipes: list[dict], feedback: list
         parsed = {"intent": "more", "slots": [{"diet": s.get("diet"), "label": s.get("label")} for s in state.get("slots") or []], "ingredients_have": state.get("have") or [], "max_minutes": state.get("max_minutes")}
         new_state = _run_search(chat_id, recipes, feedback, parsed, state, None)
         save_state(chat_id, new_state)
-        send(chat_id, _render(new_state), _buttons(new_state))
+        _present(chat_id, new_state)
         return
     kind, *rest = data.split(":")
     if kind == "slot":
@@ -361,7 +364,7 @@ def handle_callback(chat_id: int, data: str, recipes: list[dict], feedback: list
         parsed = {"intent": "replace", "slot_index": slot, "ingredients_have": state.get("have") or [], "max_minutes": state.get("max_minutes"), "slots": []}
         new_state = _run_search(chat_id, recipes, feedback, parsed, state, slot)
         save_state(chat_id, new_state)
-        send(chat_id, _render(new_state), _buttons(new_state))
+        _present(chat_id, new_state)
         return
     slot, index = int(rest[0]), int(rest[1])
     rec = _option(state, slot, index)
