@@ -114,13 +114,20 @@ def normalize(text: str, parsed: dict[str, Any]) -> dict[str, Any]:
     if any(w in t for w in ("rapid", "rápid")):
         parsed["max_minutes"] = 45
     dish = re.search(r"(?:recetas?|platos?|ideas?)\s+de\s+(.+)", t)
-    with_ings = re.search(r"(?:recetas?|platos?)\s+con\s+(.+)", t)
+    with_ings = re.search(r"(?:recetas?|platos?|cena|almuerzo).*?\bcon\b\s+(.+)", t)
     if with_ings:
-        parts = re.split(r",|\by\b", with_ings.group(1))
-        parsed["ingredients_have"] = [p.strip(" .") for p in parts if p.strip(" .")]
+        raw = with_ings.group(1)
+        raw = raw.replace("zuccini", "zucchini").replace("zapallito", "zucchini")
+        parts = re.split(r",|\by\b", raw)
+        ings = []
+        for p in parts:
+            p = re.sub(r"\b(vegetarian[ao]s?|vegana?s?|rapida|rápida|cena)\b", " ", p).strip(" .")
+            if p and p not in ings:
+                ings.append(p)
+        parsed["ingredients_have"] = ings
         parsed["query"] = None
-        parsed["slots"] = [{"diet": "any", "label": "con lo que pediste"}]
-        parsed["meal"] = None
+        parsed["slots"] = [{"diet": "vegetarian" if wants_veg else "any", "label": "vegetariana" if wants_veg else "con lo que pediste"}]
+        parsed["meal"] = "cena" if "cena" in t else None
     elif dish:
         q = re.split(r"\b(para|con|rapida|rápida|vegetariana|cena)\b", dish.group(1))[0].strip(" .")
         if q:
