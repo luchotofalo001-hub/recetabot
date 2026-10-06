@@ -105,6 +105,21 @@ def _likes_fails(feedback: list[dict[str, Any]]) -> tuple[dict[str, int], set[st
 
 
 MEAT_WORDS = ("higado", "molleja", "milanesa", "chorizo", "morcilla", "panceta", "bondiola", "asado", "vacio", "entrana", "pollo", "cerdo", "pescado", "atun", "salmon", "langostino", "cordero")
+SWEET = ("torta", "budin", "flan", "helado", "cookie", "galleta", "alfajor", "cheesecake", "pionono", "brownie", "mousse", "pan dulce", "rosca", "factura", "medialuna", "postre", "merengue", "pavlova")
+NOT_DINNER = {"pasteleria", "postres", "helados", "panes", "bebidas", "mermeladas", "snacks", "picadas", "salsas"}
+NOT_PLATE = ("chipa", "pan ", "pan de", "prepizza", "salsa ", "aderezo", "dip", "picada", "snack", "galleta", "medialuna", "factura", "tostado", "sandwich de miga", "palitos", "bolitas", "focaccia", "grisines", "bizcocho")
+
+
+def is_dinner(rec: dict[str, Any]) -> bool:
+    title = fold(rec.get("title") or "")
+    tags = rec.get("tags") or []
+    if rec.get("category") in NOT_DINNER or "postre" in tags or "pan" in tags or "bebida" in tags:
+        return False
+    if any(w in title for w in SWEET) or any(w in title for w in NOT_PLATE):
+        return False
+    if title.startswith("pan ") or " chipa" in f" {title}":
+        return False
+    return True
 
 
 def looks_meat(rec: dict[str, Any]) -> bool:
@@ -153,11 +168,8 @@ def search_slot(
         tags = rec.get("tags") or []
         if meal == "postre" and "postre" not in tags:
             continue
-        if meal in {"cena", "almuerzo"} and "postre" not in (q or ""):
-            if "postre" in tags or "bebida" in tags or "pan" in tags:
-                continue
-            if rec.get("category") in {"pasteleria", "postres", "helados", "panes", "bebidas"}:
-                continue
+        if meal in {"cena", "almuerzo"} and not is_dinner(rec):
+            continue
         ings = rec.get("ingredients") or []
         if exclude_set and any(fold(i) in exclude_set for i in ings):
             continue
