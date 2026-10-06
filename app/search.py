@@ -138,6 +138,23 @@ def looks_meat(rec: dict[str, Any]) -> bool:
     return any(w in title or w in ings for w in MEAT_WORDS) or not rec.get("vegetarian")
 
 
+ALIASES = {"zuccini": "zucchini", "zucchini": "zucchini", "zapallito": "zucchini", "calabacin": "zucchini", "garbanzos": "garbanzo", "huevos": "huevo"}
+
+
+def _have_names(have: list[str]) -> set[str]:
+    names = set()
+    for raw in have:
+        name = ALIASES.get(fold(raw), canon_ingredient(raw))
+        names.add(fold(name))
+        names.add(fold(raw))
+    return names
+
+
+def _hits(ings: list[str], title: str, wanted: set[str]) -> set[str]:
+    blob = " ".join(fold(i) for i in ings) + " " + title
+    return {w for w in wanted if w and w in blob}
+
+
 def search_slot(
     recipes: list[dict[str, Any]],
     feedback: list[dict[str, Any]],
@@ -152,8 +169,7 @@ def search_slot(
     limit: int = 3,
     allow_recent: bool = False,
 ) -> list[dict[str, Any]]:
-    have_set = {canon_ingredient(x) for x in have}
-    have_set |= {fold(x) for x in have_set}
+    have_set = _have_names(have)
     exclude_set = {fold(canon_ingredient(x)) for x in exclude}
     recent = set() if allow_recent else _cooked_recent(feedback)
     likes, fails = _likes_fails(feedback)
@@ -180,22 +196,20 @@ def search_slot(
             continue
         title_f = fold(rec.get("title") or "")
         qscore = _query_score(title_f, q) if q else 0
-        if q and qscore < 0.5 and q not in title_f:
+        if q and not have_set and qscore < 0.5 and q not in title_f:
             continue
-        if meal in {"cena", "almuerzo"} and not q and not is_dinner(rec):
+        if meal in {"cena", "almuerzo"} and not q and not have_set and not is_dinner(rec):
             continue
         ings = rec.get("ingredients") or []
         if exclude_set and any(fold(i) in exclude_set for i in ings):
             continue
-        title_f = fold(rec.get("title") or "")
-        if q and qscore < 0.5 and q not in title_f:
+        hits = _hits(ings, title_f, have_set) if have_set else set()
+        if have_set and not hits:
             continue
-        score = 1.0 + qscore * 8
-        if have_set and not q:
-            cov = _coverage(ings, have_set)
-            if cov < 0.45 and not q:
-                continue
-            score += cov * 5
+        score = 1.0 + qscore * 8 + len(hits) * 4
+        if have_set:
+            score += len(hits) / max(len(have_set), 1) * 3
+        rec = {**rec, "_match": sorted(hits)}
         score += likes.get(rid, 0) * 2.5
         if rec.get("custom"):
             score += 0.4
@@ -216,7 +230,9 @@ def format_option(index: int, rec: dict[str, Any]) -> str:
     mins = rec.get("minutes") or "?"
     flag = "vegetariana" if rec.get("vegetarian") else "con proteína animal"
     own = " · tuya" if rec.get("custom") else ""
-    return f"{index}. {rec.get('title')} ({mins} min, {flag}{own})\n   {ings}"
+    match = rec.get("_match") or []
+    extra = f"\n   coincide: {', '.join(match)}" if match else ""
+    return f"{index}. {rec.get('title')} ({mins} min, {flag}{own})\n   {ings}{extra}"
 
 
 def format_detail(rec: dict[str, Any]) -> str:
