@@ -104,7 +104,13 @@ def _likes_fails(feedback: list[dict[str, Any]]) -> tuple[dict[str, int], set[st
     return likes, fails
 
 
-MEAT_WORDS = ("higado", "molleja", "milanesa", "chorizo", "morcilla", "panceta", "bondiola", "asado", "vacio", "entrana", "pollo", "cerdo", "pescado", "atun", "salmon", "langostino", "cordero")
+MEAT_WORDS = ("higado", "molleja", "milanesa", "chorizo", "morcilla", "panceta", "bacon", "tocino", "jamon", "bondiola", "asado", "vacio", "entrana", "pollo", "cerdo", "pescado", "atun", "salmon", "langostino", "gamba", "camaron", "cordero", "ternera", "vacuno", "carne", "lomo", "merluza", "pulpo", "calamar", "mejillon", "almeja", "salchicha", "longaniza", "costilla", "matambre", "bife", "churrasco", "pavo", "pato", "anchoa", "prosciutto")
+
+
+def is_veg(rec: dict[str, Any]) -> bool:
+    title = fold(rec.get("title") or "")
+    blob = title + " " + " ".join(fold(i) for i in (rec.get("ingredients") or [])) + " " + " ".join(fold(i) for i in (rec.get("amounts") or []))
+    return not any(w in blob for w in MEAT_WORDS)
 SWEET = ("torta", "budin", "flan", "helado", "cookie", "galleta", "alfajor", "cheesecake", "pionono", "brownie", "mousse", "pan dulce", "rosca", "factura", "medialuna", "postre", "merengue", "pavlova")
 NOT_DINNER = {"pasteleria", "postres", "helados", "panes", "bebidas", "mermeladas", "snacks", "picadas", "salsas"}
 NOT_PLATE = ("chipa", "pan ", "pan de", "prepizza", "salsa ", "aderezo", "dip", "picada", "snack", "galleta", "medialuna", "factura", "tostado", "sandwich de miga", "palitos", "bolitas", "focaccia", "grisines", "bizcocho")
@@ -133,9 +139,7 @@ def _query_score(title: str, query: str) -> float:
 
 
 def looks_meat(rec: dict[str, Any]) -> bool:
-    title = fold(rec.get("title") or "")
-    ings = " ".join(fold(i) for i in (rec.get("ingredients") or []))
-    return any(w in title or w in ings for w in MEAT_WORDS) or not rec.get("vegetarian")
+    return not is_veg(rec)
 
 
 ALIASES = {"zuccini": "zucchini", "zucchini": "zucchini", "zapallito": "zucchini", "calabacin": "zucchini", "garbanzos": "garbanzo", "huevos": "huevo"}
@@ -183,11 +187,11 @@ def search_slot(
             continue
         if rid in recent and not q:
             continue
-        if diet == "vegetarian" and (not rec.get("vegetarian") or looks_meat(rec)):
+        if diet == "vegetarian" and not is_veg(rec):
             continue
-        if diet == "vegan" and (not rec.get("vegan") or looks_meat(rec)):
+        if diet == "vegan" and (not is_veg(rec) or any(w in fold(" ".join(rec.get("ingredients") or [])) for w in ("huevo", "queso", "leche", "manteca", "crema", "yogur"))):
             continue
-        if diet == "meat" and rec.get("vegetarian") and not looks_meat(rec):
+        if diet == "meat" and is_veg(rec):
             continue
         if max_minutes and (rec.get("minutes") or 999) > max_minutes:
             continue
@@ -228,7 +232,7 @@ def search_slot(
 def format_option(index: int, rec: dict[str, Any]) -> str:
     ings = ", ".join((rec.get("ingredients") or [])[:8]) or "sin ingredientes detectados"
     mins = rec.get("minutes") or "?"
-    flag = "vegetariana" if rec.get("vegetarian") else "con proteína animal"
+    flag = "vegetariana" if is_veg(rec) else "con carne o pescado"
     own = " · tuya" if rec.get("custom") else ""
     match = rec.get("_match") or []
     extra = f"\n   coincide: {', '.join(match)}" if match else ""
@@ -252,7 +256,7 @@ def format_detail(rec: dict[str, Any]) -> str:
     return (
         f"*{rec.get('title')}*\n"
         f"Tiempo estimado: {rec.get('minutes')} min · "
-        f"{'vegetariana' if rec.get('vegetarian') else 'no vegetariana'}\n\n"
+        f"{'vegetariana' if is_veg(rec) else 'no vegetariana'}\n\n"
         f"{label}:\n{ings}\n\n"
         f"{proc}{extra}"
     )
