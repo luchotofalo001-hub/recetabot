@@ -123,12 +123,13 @@ STOP = {"para", "con", "una", "uno", "receta", "recetas", "cena", "rapida", "rá
 
 def is_dinner(rec: dict[str, Any]) -> bool:
     title = fold(rec.get("title") or "")
-    tags = rec.get("tags") or []
-    if rec.get("category") in NOT_DINNER or "postre" in tags or "pan" in tags or "bebida" in tags:
+    if title.startswith("salsa") or "salsa " in title or "galleta" in title or "muffin" in title or "torta" in title or "lotus" in title:
         return False
-    if any(w in title for w in SWEET) or any(w in title for w in NOT_PLATE) or "muffin" in title or "torta" in title:
+    if any(w in title for w in SWEET) or any(w in title for w in NOT_PLATE):
         return False
-    return any(w in title for w in PLATE) or rec.get("category") in {"pollo", "carne", "pescados-y-mariscos", "arroces-y-pastas", "guisos-y-sopas", "vegetariano", "vegano", "tartas", "pizzas", "empanadas"}
+    if "al vapor" in title or "guia" in title:
+        return False
+    return any(w in title for w in PLATE)
 
 
 def _query_score(title: str, query: str) -> float:
@@ -217,12 +218,12 @@ def search_slot(
         qscore = _query_score(title_f, q) if q else 0
         if q and not have_set and qscore < 0.5 and q not in title_f:
             continue
-        if meal in {"cena", "almuerzo"} and not q and not have_set and not is_dinner(rec):
+        if meal in {"cena", "almuerzo"} and not is_dinner(rec):
             continue
         ings = rec.get("ingredients") or []
         if exclude_set and any(fold(i) in exclude_set for i in ings):
             continue
-        hits = _hits(ings, title_f, have_set, " ".join(rec.get("amounts") or []) + " " + (rec.get("procedure") or "")[:800]) if have_set else set()
+        hits = _hits(ings, title_f, have_set, " ".join(rec.get("amounts") or [])) if have_set else set()
         score = 1.0 + qscore * 8 + len(hits) * 6
         if have_set:
             score += len(hits) / max(len(have_set), 1) * 5
