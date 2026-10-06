@@ -126,7 +126,7 @@ def is_dinner(rec: dict[str, Any]) -> bool:
     tags = rec.get("tags") or []
     if rec.get("category") in NOT_DINNER or "postre" in tags or "pan" in tags or "bebida" in tags:
         return False
-    if any(w in title for w in SWEET) or any(w in title for w in NOT_PLATE):
+    if any(w in title for w in SWEET) or any(w in title for w in NOT_PLATE) or "muffin" in title or "torta" in title:
         return False
     return any(w in title for w in PLATE) or rec.get("category") in {"pollo", "carne", "pescados-y-mariscos", "arroces-y-pastas", "guisos-y-sopas", "vegetariano", "vegano", "tartas", "pizzas", "empanadas"}
 
@@ -250,7 +250,12 @@ def format_option(index: int, rec: dict[str, Any]) -> str:
     flag = "vegetariana" if is_veg(rec) else "con carne o pescado"
     own = " · tuya" if rec.get("custom") else ""
     match = rec.get("_match") or []
-    extra = f"\n   coincide: {', '.join(match)}" if match else ""
+    shown = []
+    for item in match:
+        if item in {"zucchini", "calabacin"} and any(x in shown for x in ("zucchini", "calabacin")):
+            continue
+        shown.append(item)
+    extra = f"\n   coincide: {', '.join(shown)}" if shown else ""
     return f"{index}. {rec.get('title')} ({mins} min, {flag}{own})\n   {ings}{extra}"
 
 
